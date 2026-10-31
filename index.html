@@ -1,0 +1,44 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>SerialDesk — serialized story tracker</title>
+<meta name="description" content="Track serialized stories: series, chapters, status, dates, and what to post next. Data stays in your browser.">
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#FAFAF9;color:#18181B}
+header{background:#18181B;color:#fff;padding:16px 20px}header h1{margin:0;font-size:22px}header p{margin:4px 0 0;opacity:.85;font-size:14px}
+main{max-width:860px;margin:0 auto;padding:16px}.card{background:#fff;border:1px solid #DEDDD8;border-radius:10px;padding:14px;margin-bottom:14px}
+input,select,button{font:inherit;padding:7px;border-radius:6px;border:1px solid #ccc}button{background:#2A78D6;color:#fff;border:0;cursor:pointer}button.ghost{background:#eee;color:#18181B}button.del{background:#c0392b}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;align-items:center}.row input.grow{flex:1;min-width:140px}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{border-bottom:1px solid #eee;padding:5px;text-align:left}
+.tag{padding:2px 8px;border-radius:10px;font-size:12px}.idea{background:#eee}.draft{background:#fde68a}.ready{background:#bfdbfe}.scheduled{background:#c7d2fe}.posted{background:#bbf7d0}
+.next{background:#ecfdf5;border-color:#008300}.small{font-size:13px;color:#555}
+</style></head><body>
+<header><h1>SerialDesk <small style="font-size:12px">v0.1 beta</small></h1><p>Track your serialized stories and see what to post next. Saved in this browser only.</p></header>
+<main>
+<div class="card next" id="nextbox"></div>
+<div class="card"><b>New series</b><div class="row"><input class="grow" id="sname" placeholder="Series title"><input id="sched" placeholder="Schedule, e.g. Tue & Fri"><button onclick="addSeries()">Add series</button></div>
+<div class="row"><button class="ghost" onclick="exportData()">Export JSON</button><label style="padding:7px;background:#eee;border-radius:6px;cursor:pointer">Import JSON<input type="file" accept=".json" onchange="importData(this)" hidden></label></div></div>
+<div id="list"></div>
+</main>
+<script>
+const KEY='serialdesk.v1',ST=['idea','draft','ready','scheduled','posted'];let S=JSON.parse(localStorage.getItem(KEY)||'{"series":[]}');
+const save=()=>{localStorage.setItem(KEY,JSON.stringify(S));render()},id=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const F=i=>S.series.find(x=>x.id===i);
+function addSeries(){const n=sname.value.trim();if(!n)return;S.series.push({id:id(),title:n,schedule:sched.value.trim(),chapters:[]});sname.value=sched.value='';save()}
+function delSeries(i){if(confirm('Delete this series?')){S.series=S.series.filter(x=>x.id!==i);save()}}
+function addCh(i){const t=document.getElementById('t'+i),d=document.getElementById('d'+i),s=F(i);if(!t.value.trim())return;s.chapters.push({id:id(),num:s.chapters.length+1,title:t.value.trim(),status:'draft',date:d.value,postedOn:''});save()}
+function setSt(i,c,v){const ch=F(i).chapters.find(x=>x.id===c);ch.status=v;if(v==='posted'&&!ch.postedOn)ch.postedOn=new Date().toISOString().slice(0,10);save()}
+function setDate(i,c,v){F(i).chapters.find(x=>x.id===c).date=v;save()}
+function delCh(i,c){const s=F(i);s.chapters=s.chapters.filter(x=>x.id!==c);save()}
+function nextUp(){const r=[];S.series.forEach(s=>{const ch=s.chapters.filter(c=>c.status!=='posted').sort((a,b)=>a.num-b.num)[0];if(ch)r.push({s,ch})});
+return r.sort((a,b)=>(a.ch.date||'9999').localeCompare(b.ch.date||'9999'))}
+function render(){const today=new Date().toISOString().slice(0,10),n=nextUp();
+nextbox.innerHTML='<b>What to post next</b>'+(n.length?'<ul>'+n.map(({s,ch})=>`<li><b>${esc(s.title)}</b> — Ch. ${ch.num}: ${esc(ch.title)} <span class="tag ${ch.status}">${ch.status}</span> ${ch.date?(ch.date<today?'<b style="color:#c0392b">overdue '+ch.date+'</b>':'due '+ch.date):'<span class="small">no date</span>'}</li>`).join('')+'</ul>':'<p class="small">Nothing pending. Add a series and chapters below.</p>');
+list.innerHTML=S.series.map(s=>{const p=s.chapters.filter(c=>c.status==='posted').length;
+return `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${esc(s.title)}</b> <span class="small">${esc(s.schedule)} · ${p}/${s.chapters.length} posted</span></div><button class="del" onclick="delSeries('${s.id}')">Delete</button></div>
+<table><tr><th>#</th><th>Chapter</th><th>Status</th><th>Planned date</th><th>Posted</th><th></th></tr>${s.chapters.map(c=>`<tr><td>${c.num}</td><td>${esc(c.title)}</td>
+<td><select onchange="setSt('${s.id}','${c.id}',this.value)">${ST.map(x=>`<option ${x===c.status?'selected':''}>${x}</option>`).join('')}</select></td>
+<td><input type="date" value="${c.date||''}" onchange="setDate('${s.id}','${c.id}',this.value)"></td><td class="small">${c.postedOn||''}</td><td><button class="ghost" onclick="delCh('${s.id}','${c.id}')">✕</button></td></tr>`).join('')}</table>
+<div class="row"><input class="grow" id="t${s.id}" placeholder="Chapter title"><input type="date" id="d${s.id}"><button onclick="addCh('${s.id}')">Add chapter</button></div></div>`}).join('')}
+function exportData(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,2)],{type:'application/json'}));a.download='serialdesk.json';a.click()}
+function importData(i){const f=i.files[0];if(!f)return;f.text().then(t=>{const d=JSON.parse(t);if(!Array.isArray(d.series))return alert('Invalid file');S=d;save()})}
+render();
+</script></body></html>
